@@ -92,10 +92,10 @@ public class LikeSearch<T> {
 
     public Collection<T> search(String searchWords, int limit, LikeSearchType searchType) {
         rLock.lock();
-        if (StringUtils.isBlank(searchWords)) {
-            return new ArrayList<>(targetWordsMap.keySet()).subList(0, limit);
-        }
         try {
+            if (StringUtils.isBlank(searchWords)) {
+                return new ArrayList<>(targetWordsMap.keySet()).subList(0, limit);
+            }
             char[] charArray = searchWords.toCharArray();
             int matchSize = 0;
             ResultContext context = new ResultContext();
@@ -215,7 +215,7 @@ public class LikeSearch<T> {
         }
 
         public boolean containIndex(Entry<T, CachedHashSet<Short>> currentIndexEntry, Short expectIndex,
-                LikeSearchType searchType, String searchWords) {
+                                    LikeSearchType searchType, String searchWords) {
             switch (searchType) {
                 case EXACT_MATCH:
                     return currentIndexEntry.getValue().contains(expectIndex) && currentIndexEntry.getKey()
@@ -228,3 +228,4 @@ public class LikeSearch<T> {
         }
     }
 }
+
