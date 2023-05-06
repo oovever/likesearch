@@ -26,15 +26,15 @@ public class LikeSearch<T> {
     private final Lock wLock = reentrantReadWriteLock.writeLock();
 
     private final Node<T>[] nodes = new Node[Character.MAX_VALUE];
-    private final Map<T, Set<String>> targetWordMap = new HashMap<>();
+    private final Map<T, Set<String>> targetWordsMap = new HashMap<>();
 
-    public void put(T targetWord, String searchWord) {
+    public void put(T targetWords, String searchWords) {
         wLock.lock();
         try {
-            if (targetWordMap.containsKey(targetWord) && targetWordMap.get(targetWord).contains(searchWord)) {
+            if (targetWordsMap.containsKey(targetWords) && targetWordsMap.get(targetWords).contains(searchWords)) {
                 return;
             }
-            char[] charArray = searchWord.toCharArray();
+            char[] charArray = searchWords.toCharArray();
             for (int i = 0; i < charArray.length; i++) {
                 char c = charArray[i];
                 Node<T> node = nodes[c];
@@ -42,34 +42,34 @@ public class LikeSearch<T> {
                     node = new Node<T>();
                     nodes[c] = node;
                 }
-                node.add(targetWord, (short) i);
+                node.add(targetWords, (short) i);
             }
-            if (!targetWordMap.containsKey(targetWord)) {
-                targetWordMap.put(targetWord, new HashSet<>());
+            if (!targetWordsMap.containsKey(targetWords)) {
+                targetWordsMap.put(targetWords, new HashSet<>());
             }
-            targetWordMap.get(targetWord).add(searchWord);
+            targetWordsMap.get(targetWords).add(searchWords);
         } finally {
             wLock.unlock();
         }
 
     }
 
-    public boolean remove(T targetWord) {
+    public boolean remove(T targetWords) {
         wLock.lock();
         try {
-            if (!targetWordMap.containsKey(targetWord)) {
+            if (!targetWordsMap.containsKey(targetWords)) {
                 return false;
             }
             boolean success = false;
-            for (String searchWord : targetWordMap.get(targetWord)) {
+            for (String searchWord : targetWordsMap.get(targetWords)) {
                 char[] searchWordArr = searchWord.toCharArray();
                 for (char wordChar : searchWordArr) {
                     if (nodes[wordChar] != null) {
-                        success = nodes[wordChar].remove(targetWord);
+                        success = nodes[wordChar].remove(targetWords);
                     }
                 }
             }
-            targetWordMap.remove(targetWord);
+            targetWordsMap.remove(targetWords);
             return success;
         } finally {
             wLock.unlock();
@@ -77,23 +77,26 @@ public class LikeSearch<T> {
 
     }
 
-    public void update(T removeWord, T newTargetWord, String newSearchWord) {
+    public void update(T removeWords, T newTargetWords, String newSearchWords) {
         wLock.lock();
         try {
-            boolean removeResult = remove(removeWord);
-            targetWordMap.remove(removeWord);
+            boolean removeResult = remove(removeWords);
+            targetWordsMap.remove(removeWords);
             if (removeResult) {
-                put(newTargetWord, newSearchWord);
+                put(newTargetWords, newSearchWords);
             }
         } finally {
             wLock.unlock();
         }
     }
 
-    public Collection<T> search(String searchWord, int limit, LikeSearchType searchType) {
+    public Collection<T> search(String searchWords, int limit, LikeSearchType searchType) {
         rLock.lock();
+        if (StringUtils.isBlank(searchWords)) {
+            return new ArrayList<>(targetWordsMap.keySet()).subList(0, limit);
+        }
         try {
-            char[] charArray = searchWord.toCharArray();
+            char[] charArray = searchWords.toCharArray();
             int matchSize = 0;
             ResultContext context = new ResultContext();
             for (char c : charArray) {
@@ -101,12 +104,12 @@ public class LikeSearch<T> {
                 if (node == null) {
                     break;
                 }
-                if (!context.match(node, searchType, searchWord)) {
+                if (!context.match(node, searchType, searchWords)) {
                     break;
                 }
                 matchSize++;
             }
-            if (matchSize == searchWord.length()) {
+            if (matchSize == searchWords.length()) {
                 return context.limit(limit);
             }
             return Collections.emptyList();
@@ -136,14 +139,14 @@ public class LikeSearch<T> {
 
         Map<T, CachedHashSet<Short>> indexMap = new HashMap<>();
 
-        private void add(T targetWord, Short index) {
-            Set<Short> indexSet = indexMap.computeIfAbsent(targetWord, k -> new CachedHashSet<>());
+        private void add(T targetWords, Short index) {
+            Set<Short> indexSet = indexMap.computeIfAbsent(targetWords, k -> new CachedHashSet<>());
             indexSet.add(index);
         }
 
-        private boolean remove(T targetWord) {
-            if (indexMap.containsKey(targetWord)) {
-                indexMap.remove(targetWord);
+        private boolean remove(T targetWords) {
+            if (indexMap.containsKey(targetWords)) {
+                indexMap.remove(targetWords);
                 return true;
             }
             return false;
@@ -172,7 +175,7 @@ public class LikeSearch<T> {
         Map<T, Set<Short>> result;
         boolean isFirstIndex = false;
 
-        private boolean match(Node<T> node, LikeSearchType searchType, String searchWord) {
+        private boolean match(Node<T> node, LikeSearchType searchType, String searchWords) {
             if (!isFirstIndex) {
                 result = new HashMap<>(node.indexMap);
                 isFirstIndex = true;
@@ -187,7 +190,7 @@ public class LikeSearch<T> {
                 Set<Short> beforeIndexSet = result.get(entry.getKey());
                 boolean currentMatch = false;
                 for (Short beforeIndex : beforeIndexSet) {
-                    if (containIndex(entry, ++beforeIndex, searchType, searchWord)) {
+                    if (containIndex(entry, ++beforeIndex, searchType, searchWords)) {
                         currentMatch = true;
                         break;
                     }
@@ -212,11 +215,11 @@ public class LikeSearch<T> {
         }
 
         public boolean containIndex(Entry<T, CachedHashSet<Short>> currentIndexEntry, Short expectIndex,
-                LikeSearchType searchType, String searchWord) {
+                LikeSearchType searchType, String searchWords) {
             switch (searchType) {
                 case EXACT_MATCH:
                     return currentIndexEntry.getValue().contains(expectIndex) && currentIndexEntry.getKey()
-                            .equals(searchWord);
+                            .equals(searchWords);
                 case LIKE_MATCH:
                     return currentIndexEntry.getValue().contains(expectIndex);
                 default:
